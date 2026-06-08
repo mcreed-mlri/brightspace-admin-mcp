@@ -1,0 +1,18 @@
+# Secrets & tokens — NEVER commit these
+.env
+.tokens.json
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Data Hub exports (can be large / contain PII)
+exports/
+*.zip
+*.csv

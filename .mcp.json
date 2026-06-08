@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "brightspace": {
+      "command": "c:/dev/brightspace-admin-mcp/.venv/Scripts/python.exe",
+      "args": ["-m", "brightspace_mcp.server"],
+      "cwd": "c:/dev/brightspace-admin-mcp",
+      "env": { "PYTHONPATH": "c:/dev/brightspace-admin-mcp/src" }
+    }
+  }
+}
