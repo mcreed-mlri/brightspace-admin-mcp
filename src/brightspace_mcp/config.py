@@ -28,6 +28,14 @@ class ConfigError(RuntimeError):
     """Raised when required configuration is missing."""
 
 
+def flag(name: str, default: bool) -> bool:
+    """Read a boolean feature flag from the environment ('0'/'false'/'no'/'off' = off)."""
+    val = os.environ.get(name, "").strip().lower()
+    if not val:
+        return default
+    return val not in ("0", "false", "no", "off")
+
+
 def _require(name: str) -> str:
     val = os.environ.get(name, "").strip()
     if not val:

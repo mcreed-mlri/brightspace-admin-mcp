@@ -2,6 +2,9 @@
 .env
 .tokens.json
 
+# Local API audit trail (contains URLs of everything accessed)
+audit.log
+
 # Python
 .venv/
 venv/

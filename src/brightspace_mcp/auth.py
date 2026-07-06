@@ -7,6 +7,7 @@ every refresh, or the next run will fail with an invalid_grant error.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from dataclasses import dataclass
@@ -101,18 +102,42 @@ class TokenManager:
         self._cfg = cfg
         self._http = http_client
         self._tokens: Tokens | None = _read_tokens(cfg.token_file)
+        # Serialize refreshes: concurrent tool calls must never refresh twice, because
+        # the second refresh would submit an already-consumed (rotated) refresh token.
+        self._lock = asyncio.Lock()
 
-    async def get_access_token(self, force_refresh: bool = False) -> str:
+    async def get_access_token(
+        self, force_refresh: bool = False, stale_token: str | None = None
+    ) -> str:
+        """Return a valid access token, refreshing under a lock if needed.
+
+        `stale_token` is the token the caller just got a 401 with; if another task
+        already replaced it while we waited for the lock, we skip the extra refresh.
+        """
         if self._tokens is None:
             raise AuthError(
                 "No tokens found. Run `python scripts/authorize.py` once to authorize."
             )
-        if force_refresh or self._tokens.is_expired:
-            await self._refresh()
-        return self._tokens.access_token
+        async with self._lock:
+            already_replaced = (
+                stale_token is not None and self._tokens.access_token != stale_token
+            )
+            if (force_refresh and not already_replaced) or self._tokens.is_expired:
+                await self._refresh()
+            return self._tokens.access_token
 
     async def _refresh(self) -> None:
         assert self._tokens is not None
+        # Another process (e.g. Claude Desktop running this server too) may have already
+        # rotated the refresh token — its on-disk token is the only live one.
+        try:
+            on_disk = _read_tokens(self._cfg.token_file)
+        except Exception:
+            on_disk = None  # unreadable/partial file: fall through to a normal refresh
+        if on_disk and on_disk.refresh_token != self._tokens.refresh_token:
+            self._tokens = on_disk
+            if not self._tokens.is_expired:
+                return
         resp = await self._http.post(
             TOKEN_URL,
             data={

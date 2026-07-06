@@ -74,14 +74,33 @@ run `/mcp` to confirm `brightspace` is connected, then try:
 | Org structure | `get_organization`, `search_orgunits`, `get_orgunit`, `get_descendants`, `list_orgunit_types` |
 | Enrollments | `list_user_enrollments`, `list_orgunit_enrollments`, `get_classlist`, `get_user_enrollment` |
 | Grades | `list_grade_objects`, `get_grade_object`, `get_user_grades`, `get_final_grade` |
-| Data Hub | `list_brightspace_data_sets`, `list_advanced_data_sets`, `download_data_set` |
-| Exploration | `api_get` (raw GET), `list_api_versions` |
+| Data Hub | `list_brightspace_data_sets`, `list_advanced_data_sets`, `run_advanced_data_set`, `download_data_set` (disable all with `BRIGHTSPACE_ENABLE_DATAHUB=0`) |
+| Exploration | `list_api_versions`; `api_get` (raw GET, **off by default** — enable with `BRIGHTSPACE_ENABLE_RAW=1`) |
 
 ## Security notes
 
-- `.env` and `.tokens.json` hold secrets and are **gitignored** â€” never commit them.
-- The server only makes **GET** requests; it cannot modify your instance.
-- Data Hub downloads can be large and contain PII; they save to `./exports/` (gitignored).
+**Access & identity**
+- The server cannot modify any LMS data. Every call is a GET except `run_advanced_data_set`,
+  which POSTs one thing: a Data Hub *export job* (it creates a report, never changes records).
+- The token can never exceed the role of the user who authorized it. **Authorize as a
+  dedicated service account with a minimal read-only admin role**, not a personal
+  full-admin account — that role is the strongest control you have.
+- **Revocation:** Admin Tools → Manage Extensibility → OAuth 2.0 → delete the app.
+  This immediately invalidates all access and refresh tokens. Do this if `.tokens.json`
+  is ever exposed.
+
+**Data handling**
+- Tool results (names, emails, grades) become part of the Claude conversation and are
+  sent to the LLM provider. Confirm this is permitted under your institution's privacy
+  obligations (e.g. FERPA) and your Anthropic agreement before using on student data.
+- `.env` and `.tokens.json` hold secrets and are **gitignored** — never commit them.
+  `.tokens.json` is a standing credential stored in plaintext: use full-disk encryption
+  (BitLocker) on any machine that runs this server.
+- Data Hub downloads can be large and contain PII; they save to `./exports/` (gitignored,
+  unencrypted). Delete exports when you're done with them — they are bulk student data.
+- Every API call is appended to `audit.log` (gitignored) — timestamp, method, URL,
+  status — so you can answer "what did the AI access and when". Brightspace also logs
+  API calls server-side against this OAuth app.
 
 ## Roadmap
 

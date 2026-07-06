@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from mcp.types import ToolAnnotations
+
+from ..client import BrightspaceAPIError
 from ..context import get_client
+
+_READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 
 def register(mcp) -> None:
-    @mcp.tool()
+    @mcp.tool(annotations=_READ_ONLY)
     async def whoami() -> dict:
         """Return the Brightspace user the MCP is acting as (Identifier, names, role).
 
@@ -14,12 +19,12 @@ def register(mcp) -> None:
         """
         return await get_client().get("lp", "/users/whoami")
 
-    @mcp.tool()
+    @mcp.tool(annotations=_READ_ONLY)
     async def get_user(user_id: int) -> dict:
         """Get a single user's profile by their Brightspace UserId."""
         return await get_client().get("lp", f"/users/{user_id}")
 
-    @mcp.tool()
+    @mcp.tool(annotations=_READ_ONLY)
     async def find_user(
         username: str | None = None,
         org_defined_id: str | None = None,
@@ -29,17 +34,26 @@ def register(mcp) -> None:
 
         Provide exactly one filter. Returns matching user records.
         """
-        params: dict = {}
-        if username:
-            params["userName"] = username
-        if org_defined_id:
-            params["orgDefinedId"] = org_defined_id
-        if external_email:
-            params["externalEmail"] = external_email
-        if not params:
-            raise ValueError("Provide one of: username, org_defined_id, external_email.")
-        result = await get_client().get("lp", "/users/", params=params)
-        # This endpoint returns either a single object or a list depending on the filter.
+        filters = {
+            "userName": username,
+            "orgDefinedId": org_defined_id,
+            "externalEmail": external_email,
+        }
+        params = {k: v for k, v in filters.items() if v}
+        if len(params) != 1:
+            raise ValueError(
+                "Provide exactly one of: username, org_defined_id, external_email."
+            )
+        try:
+            result = await get_client().get("lp", "/users/", params=params)
+        except BrightspaceAPIError as exc:
+            if exc.status == 404:
+                return []  # Brightspace answers 404 when no user matches the filter
+            raise
+        # Shape varies by filter: userName -> single object, orgDefinedId -> list,
+        # externalEmail -> paged result set ({PagingInfo, Items}).
         if result is None:
             return []
-        return result if isinstance(result, list) else [result]
+        if isinstance(result, dict):
+            return result.get("Items", [result])
+        return result
